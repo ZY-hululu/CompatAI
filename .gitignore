@@ -1,0 +1,24 @@
+# 依赖与虚拟环境
+.venv/
+.cache/
+.tmp/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+node_modules/
+
+# 密钥：绝不提交（backend/.env 里是真实 Key）
+.env
+.env.*
+!.env.example
+
+# 运行时产物（可重新生成）
+backend/data/bcd_index.json
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

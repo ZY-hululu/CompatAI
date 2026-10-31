@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>CompatAI · AI 浏览器兼容性助手</title>
+
+<!--
+  离线可用：Tailwind / ECharts 全部走本地 assets/vendor（版本与校验和见 vendor/README.md），
+  字体优先用系统字体（Inter 装了就自动用，没装也不影响布局）。
+  整份页面不含任何 http(s) 外链，断网可用。
+-->
+
+<!-- 设计 token（CSS 变量 + 组件类），改色只改这一个文件 -->
+<link rel="stylesheet" href="assets/tokens.css?v=3" />
+
+<script src="assets/vendor/tailwind.js"></script>
+<script>
+  // Tailwind 的色值必须字面量，无法读 CSS 变量 → 与 assets/tokens.css 保持镜像（改色两处同步）
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          paper: '#F4F4F0',
+          sidebar: '#232323',
+          card: '#FFFFFF',
+          ink: '#111111',
+          muted: '#888888',
+          safe: '#D9E5D6',
+          warn: '#F7E4A6',
+          accentFrom: '#8E95F9',
+          accentTo: '#A6B4FE',
+        },
+        borderRadius: { card: '24px', inner: '12px', btn: '16px' },
+        boxShadow: { card: '0px 10px 30px rgba(0,0,0,0.04)' },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Microsoft YaHei', 'sans-serif'],
+          mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<script src="assets/vendor/echarts.min.js"></script>
+</head>
+
+<body class="bg-paper font-sans text-ink antialiased">
+<div class="flex min-h-screen">
+
+  <!-- ======================= 侧边栏 ======================= -->
+  <aside class="hidden w-[240px] flex-none flex-col justify-between bg-sidebar px-4 py-6 lg:flex">
+    <div>
+      <!-- Logo -->
+      <div class="flex items-center gap-3 px-2">
+        <div class="grid h-9 w-9 place-items-center rounded-inner text-[15px] font-bold text-white"
+             style="background: linear-gradient(135deg, var(--accent-from), var(--accent-to));">C</div>
+        <div class="leading-tight">
+          <p class="text-[15px] font-semibold text-white">CompatAI</p>
+          <p class="text-[11px] text-white/45">浏览器兼容性助手</p>
+        </div>
+      </div>
+
+      <!-- 导航：激活项左侧蓝紫指示圆点 -->
+      <nav class="mt-8 space-y-1" aria-label="主导航">
+        <a href="#" class="nav-item" aria-current="page">
+          <span class="nav-dot"></span>
+          <svg class="h-[18px] w-[18px] flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" />
+            <rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" />
+          </svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="#" class="nav-item">
+          <span class="nav-dot opacity-0"></span>
+          <svg class="h-[18px] w-[18px] flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M9 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M15 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Code Analysis</span>
+        </a>
+        <a href="#" class="nav-item">
+          <span class="nav-dot opacity-0"></span>
+          <svg class="h-[18px] w-[18px] flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" />
+          </svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+    </div>
+
+    <!-- 引擎状态：把"数据是本地真实 BCD"写在界面上，答辩时不用额外解释 -->
+    <div class="mt-8 rounded-inner bg-white/5 p-4">
+      <p class="flex items-center gap-2 text-[12px] text-white/85">
+        <span class="h-1.5 w-1.5 flex-none rounded-full bg-safe"></span>L1 检测引擎就绪
+      </p>
+      <p class="mt-1.5 text-[11px] leading-relaxed text-white/40">BCD 5.6.11 · 13,163 条特性</p>
+      <p class="mt-0.5 text-[11px] leading-relaxed text-white/40">本地索引 · 零网络 · 可复现</p>
+    </div>
+  </aside>
+
+  <!-- ======================= 主内容区 ======================= -->
+  <main class="min-w-0 flex-1">
+    <div class="mx-auto w-full max-w-[1180px] px-6 py-8 lg:px-10 lg:py-9">
+
+      <!-- 顶部：标题 + 胶囊搜索框 -->
+      <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Dashboard</p>
+          <h1 class="mt-1.5 text-[30px] font-semibold leading-tight tracking-tight">浏览器兼容性检测</h1>
+          <p class="mt-1.5 text-[13px] text-muted">确定性检测 · 模型只解释，不判定兼容性</p>
+        </div>
+
+        <label class="search flex w-full items-center gap-2 px-4 py-2.5 sm:w-[300px]">
+          <svg class="h-4 w-4 flex-none text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" stroke-linecap="round" />
+          </svg>
+          <input id="search" type="search" placeholder="搜索特性 / BCD 路径…"
+                 class="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-muted" />
+        </label>
+      </header>
+
+      <!-- 警告/错误 banner：内容由 app.js 的 renderBanner 渲染（浅黄，不新增色值） -->
+      <div id="banner" class="hidden"></div>
+
+      <!-- 目标浏览器：Chips，可增删改 -->
+      <section class="card mt-5 px-6 py-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-[14px] font-semibold">目标浏览器</h2>
+            <span class="pill pill-muted">可增删改</span>
+          </div>
+          <p class="text-[12px] text-muted">任意合法版本号，如 12.1 / 15.0.2（1–4 段数字）</p>
+        </div>
+        <div id="target-chips" class="mt-4 flex flex-wrap items-center gap-2"></div>
+      </section>
+
+      <!-- 三张核心卡片 -->
+      <section class="mt-5 grid gap-5 sm:grid-cols-3">
+        <article class="card-safe px-6 py-5">
+          <p class="text-[12px] font-medium text-ink/60">总检测代码行数</p>
+          <p id="stat-lines" class="mt-3.5 text-[34px] font-semibold leading-none tracking-tight">0</p>
+          <p id="stat-lines-sub" class="mt-2.5 text-[12px] text-ink/55">—</p>
+        </article>
+
+        <article class="card-warn px-6 py-5">
+          <p class="text-[12px] font-medium text-ink/60">兼容性问题</p>
+          <p id="stat-issues" class="mt-3.5 text-[34px] font-semibold leading-none tracking-tight">0</p>
+          <p id="stat-issues-sub" class="mt-2.5 text-[12px] text-ink/55">—</p>
+        </article>
+
+        <article class="card-accent px-6 py-5 text-white">
+          <p class="text-[12px] font-medium text-white/75">系统状态</p>
+          <p class="mt-3.5 text-[22px] font-semibold leading-none">L1 就绪</p>
+          <button id="fix-all"
+                  class="mt-4 inline-flex items-center gap-1.5 rounded-btn bg-white px-4 py-2 text-[13px] font-semibold text-ink transition hover:bg-white/90">
+            一键修复全部
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </article>
+      </section>
+
+      <!-- 代码输入 -->
+      <section class="card mt-5 p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <h2 class="text-[14px] font-semibold">代码检测</h2>
+            <div class="flex rounded-inner bg-black/[0.03] p-1" role="tablist" aria-label="代码类型">
+              <button data-tab="css" role="tab" aria-selected="true" class="tab rounded-[9px] px-3 py-1 text-[12px] font-medium">CSS</button>
+              <button data-tab="js" role="tab" aria-selected="false" class="tab rounded-[9px] px-3 py-1 text-[12px] font-medium">JS</button>
+              <button data-tab="html" role="tab" aria-selected="false" class="tab rounded-[9px] px-3 py-1 text-[12px] font-medium">HTML</button>
+            </div>
+          </div>
+          <button id="load-contract" class="btn-ghost px-3 py-1.5 text-[12px]">载入契约示例</button>
+        </div>
+
+        <div class="mt-4 rounded-inner bg-white focus-within:ring-2 focus-within:ring-indigo-100">
+          <textarea id="code" class="code-area h-[248px] p-4" spellcheck="false" aria-label="源代码输入"></textarea>
+        </div>
+        <p id="code-hint" class="mt-2 hidden text-[12px] text-muted"></p>
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p class="text-[12px] text-muted">
+            <code class="font-mono">Ctrl/⌘ + Enter</code> 快速检测 · 数据来自 <code class="font-mono">POST /api/detect</code>
+          </p>
+          <button id="detect" class="btn-accent inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold">
+            <span id="detect-spinner" class="hidden h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+            <span id="detect-label">开始检测</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 图表区 7:5 -->
+      <section class="mt-5 grid gap-5 lg:grid-cols-12">
+        <article class="card p-6 lg:col-span-7">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-[14px] font-semibold">各浏览器受影响问题数</h2>
+            <span class="pill pill-muted">按 unsupported_browsers 统计</span>
+          </div>
+          <div id="chart-bar" class="mt-4 h-[260px] w-full"></div>
+        </article>
+
+        <article class="card p-6 lg:col-span-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-[14px] font-semibold">问题严重等级比例</h2>
+            <span class="pill pill-muted">确定性矩阵</span>
+          </div>
+          <div id="chart-donut" class="mt-1 h-[226px] w-full"></div>
+          <div id="donut-legend" class="mt-1 flex items-center justify-center gap-5 text-[12px] text-muted"></div>
+        </article>
+      </section>
+
+      <!-- 底部列表 -->
+      <section class="card mt-5 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+          <div class="flex items-center gap-2">
+            <h2 class="text-[14px] font-semibold">问题列表</h2>
+            <span id="issue-count" class="pill pill-muted">0</span>
+          </div>
+          <p id="list-status" class="text-[12px] text-muted" aria-live="polite">按严重程度排序 · 来自 L1 确定性检测</p>
+        </div>
+
+        <!-- 骨架屏 -->
+        <div id="issue-skeleton" class="hidden space-y-3 px-6 pb-6">
+          <div class="skeleton h-16 w-full"></div>
+          <div class="skeleton h-16 w-full"></div>
+          <div class="skeleton h-16 w-full"></div>
+        </div>
+
+        <!-- 未识别特性（BCD 查不到）由 app.js 填充 -->
+        <p id="unknown-features" class="hidden border-t border-black/5 px-6 py-3 text-[12px] text-muted"></p>
+
+        <div id="issue-list" class="thin-scroll max-h-[520px] overflow-y-auto"></div>
+
+        <div id="issue-empty" class="hidden px-6 py-14 text-center">
+          <p class="text-[13px] text-muted">没有匹配的问题</p>
+          <p class="mt-1 text-[12px] text-muted/70">试试清空搜索框，或改用更老的目标版本</p>
+        </div>
+      </section>
+
+      <!-- ============ 修复与验证（L2 + L3）：默认隐藏，点"一键修复"后展开 ============ -->
+      <section id="fix-panel" class="card mt-5 hidden overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+          <div class="flex items-center gap-2">
+            <h2 class="text-[14px] font-semibold">修复与验证</h2>
+            <span id="fix-state" class="pill pill-muted">待执行</span>
+          </div>
+          <div id="fix-summary" class="flex flex-wrap items-center gap-2 text-[12px] text-muted"></div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 border-t border-black/5 px-6 py-3">
+          <div class="flex rounded-inner bg-black/[0.03] p-1" role="tablist" aria-label="修复视图">
+            <button data-fixtab="diff" role="tab" aria-selected="true"
+                    class="fixtab rounded-[9px] px-3 py-1 text-[12px] font-medium">差异</button>
+            <button data-fixtab="fixed" role="tab" aria-selected="false"
+                    class="fixtab rounded-[9px] px-3 py-1 text-[12px] font-medium">修复后</button>
+            <button data-fixtab="original" role="tab" aria-selected="false"
+                    class="fixtab rounded-[9px] px-3 py-1 text-[12px] font-medium">原始</button>
+          </div>
+          <div class="ml-auto flex flex-wrap items-center gap-2">
+            <button id="use-sample-fix" class="btn-ghost px-3 py-1.5 text-[12px]">填入示例修复</button>
+            <button id="verify-fix" class="btn-accent px-4 py-2 text-[13px] font-semibold">重新验证</button>
+          </div>
+        </div>
+
+        <div id="fix-diff" class="thin-scroll max-h-[420px] overflow-auto px-6 py-4 font-mono text-[12px] leading-6"></div>
+        <div id="fix-fixed" class="hidden max-h-[420px] overflow-auto px-6 py-4 font-mono text-[12px] leading-6"></div>
+        <div id="fix-original" class="hidden max-h-[420px] overflow-auto px-6 py-4 font-mono text-[12px] leading-6"></div>
+
+        <div id="fix-issues" class="border-t border-black/5 px-6 py-4"></div>
+      </section>
+
+      <p class="mt-6 pb-2 text-center text-[11px] text-muted/80">
+        第 3 步联调 · 数据来自本地 L1 接口 · 圆角/色值/阴影遵循 docs/00-plan.md §4.1 · 示例数据由本地 L1 真实检测生成
+      </p>
+    </div>
+  </main>
+</div>
+
+<div id="datalists" class="hidden"></div>
+
+<script src="app.js?v=3" defer></script>
+</body>
+</html>

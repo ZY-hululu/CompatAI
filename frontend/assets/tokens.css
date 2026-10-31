@@ -1,0 +1,198 @@
+/* =============================================================================
+   设计 token —— 与 docs/00-plan.md §4.1 一一对应。
+   规则：色值只在这里出现一次；Tailwind 配置里的同名色值是"镜像"（CDN 版无法读 CSS 变量
+   生成任意色类），所以改色时必须两处同步。ECharts 也通过 getComputedStyle 读这里。
+   ============================================================================= */
+
+:root {
+  --paper: #F4F4F0;          /* 全局背景：极浅米灰 */
+  --sidebar: #232323;        /* 侧边栏：深炭黑 */
+  --card: #FFFFFF;           /* 卡片：纯白 */
+  --ink: #111111;            /* 主文字 */
+  --muted: #888888;          /* 副文字 */
+  --safe: #D9E5D6;           /* 浅绿：安全/通过 */
+  --warn: #F7E4A6;           /* 浅黄：警告 */
+  --accent-from: #8E95F9;    /* 蓝紫渐变起点 */
+  --accent-to: #A6B4FE;      /* 蓝紫渐变终点 */
+  --accent-soft: rgba(142, 149, 249, 0.16);
+  --line: rgba(0, 0, 0, 0.05);      /* 分隔线，比任何灰阶都柔和 */
+  --radius-card: 24px;
+  --radius-inner: 12px;
+  --radius-btn: 16px;
+  --shadow-card: 0px 10px 30px rgba(0, 0, 0, 0.04);
+}
+
+/* ---------- 卡片 ------------------------------------------------------------------ */
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.card-safe   { background: var(--safe); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.card-warn   { background: var(--warn); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+
+/* 第三张卡：蓝紫渐变。阴影带一点主色，避免白背景上看不出体积 */
+.card-accent {
+  background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+  border-radius: var(--radius-card);
+  box-shadow: 0 14px 34px rgba(142, 149, 249, 0.26);
+}
+
+/* ---------- 按钮 ------------------------------------------------------------------ */
+
+.btn-accent {
+  background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+  color: #fff;
+  border-radius: var(--radius-btn);
+  box-shadow: 0 8px 20px rgba(142, 149, 249, 0.28);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+.btn-accent:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(142, 149, 249, 0.34); }
+.btn-accent:active:not(:disabled) { transform: translateY(0); }
+.btn-accent:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-ghost {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: var(--radius-inner);
+  color: var(--ink);
+  transition: background 0.18s ease;
+}
+.btn-ghost:hover { background: rgba(0, 0, 0, 0.06); }
+
+/* ---------- 搜索框 / 胶囊 --------------------------------------------------------- */
+
+.search {
+  background: var(--card);
+  border-radius: 999px;
+  box-shadow: var(--shadow-card);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.pill-high   { background: var(--warn); color: var(--ink); }
+.pill-medium { background: var(--accent-soft); color: var(--ink); }
+.pill-low    { background: var(--safe); color: var(--ink); }
+.pill-muted  { background: rgba(0, 0, 0, 0.04); color: var(--muted); }
+
+/* ---------- 目标浏览器 chip ------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 10px;
+  border-radius: var(--radius-inner);
+  background: var(--paper);
+  transition: box-shadow 0.18s ease;
+}
+.chip:focus-within { box-shadow: 0 0 0 2px rgba(199, 210, 254, 0.9); } /* ring-indigo-100 */
+.chip .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.chip-browser,
+.chip-version {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 0;
+}
+.chip-browser { appearance: none; -webkit-appearance: none; cursor: pointer; font-weight: 600; }
+.chip-version { width: 3.2rem; font-variant-numeric: tabular-nums; }
+.chip-remove {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.chip-remove:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
+
+/* ---------- 代码输入 -------------------------------------------------------------- */
+
+.code-area {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: vertical;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--ink);
+  tab-size: 2;
+}
+
+/* ---------- 骨架屏 ----------------------------------------------------------------- */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.045) 25%,
+    rgba(0, 0, 0, 0.075) 37%,
+    rgba(0, 0, 0, 0.045) 63%
+  );
+  background-size: 400% 100%;
+  border-radius: var(--radius-inner);
+  animation: shimmer 1.4s ease infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  .btn-accent { transition: none; }
+}
+
+/* ---------- 侧边栏导航 ------------------------------------------------------------- */
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-inner);
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 14px;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.nav-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.nav-item[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  font-weight: 600;
+}
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-from);
+  box-shadow: 0 0 0 3px rgba(142, 149, 249, 0.22);
+  flex: none;
+}
+
+/* ---------- 列表行 ----------------------------------------------------------------- */
+
+.issue-row + .issue-row { border-top: 1px solid var(--line); }
+.issue-row { transition: background 0.15s ease; }
+.issue-row:hover { background: rgba(0, 0, 0, 0.012); }
+
+/* 滚动条：只在真正滚动的容器里露一点点，别抢视觉 */
+.thin-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); border-radius: 999px; }
+.thin-scroll::-webkit-scrollbar-track { background: transparent; }

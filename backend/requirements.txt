@@ -1,0 +1,15 @@
+# 第 1 步（L1 后端骨架 + CSS 检测）依赖，版本已锁定，与 .venv 实测一致。
+# 安装：python -m pip install -r requirements.txt
+fastapi==0.159.1
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.16.1
+tinycss2==1.5.1
+esprima==4.0.1
+beautifulsoup4==4.15.0
+lxml==6.1.3
+httpx==0.28.1
+pytest==9.1.1
+
+# L2（LLM 解释与修复）
+openai==3.36.0
