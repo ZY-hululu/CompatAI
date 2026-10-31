@@ -28,7 +28,12 @@ const META = {
   max_source_chars: 200000,
   bcd_index_ready: true,
   bcd_version: '5.6.11',
+  bcd_feature_count: 13196,
   releases: { chrome: ['120', '90'], safari: ['16.0', '14.1'], firefox: ['115', '88'], edge: ['120', '90'] },
+  llm: { model: 'test-model', base_url: 'https://api.example.com', key_configured: true,
+         timeout_seconds: 60, max_retries: 2, max_output_tokens: 2000, context_lines: 20 },
+  l3: { jsdom_timeout_seconds: 5, node_available: true, runner_available: true },
+  features: { max_source_chars: 200000, max_issues: 500 },
 };
 
 const DETECT = {
@@ -165,6 +170,17 @@ function buildPage(html) {
   check('donut 图例显示 4/1/1',
     $$('#donut-legend > span').map((s) => s.textContent.replace(/\s+/g, '')).join('|').includes('high4'));
   check('list-status 显示条数', $('#list-status').textContent.includes('共 6 条'));
+  check('一键修复与开始检测在同一张卡里',
+    $('#fix-all').closest('section') === $('#detect').closest('section'));
+  check('一键修复不在 Dashboard 页',
+    !$('[data-page="dashboard"]').contains($('#fix-all')));
+  check('修复面板紧邻代码区（在问题列表之前）',
+    $('#fix-panel').compareDocumentPosition($('#issue-list')) & 4);
+  check('侧边栏特性数来自接口', $('#engine-note').textContent.includes('13,196'),
+    $('#engine-note').textContent);
+
+  check('首页最近问题只显示 5 条', $$('.top-row').length === 5, String($$('.top-row').length));
+  check('最近问题计数 = 6', $('#top-count').textContent === '6');
 
   console.log('\n[3] chips 增删');
   click($('.chip-remove'));
@@ -182,17 +198,45 @@ function buildPage(html) {
   click($('#load-contract'));
   check('载入契约示例', $('#code').value === '.box { display: flex; gap: 10px; }');
 
-  console.log('\n[5] 搜索过滤');
+  console.log('\n[5] 顶部搜索 = 特性查询（本地 BCD 查表）');
   const search = $('#search');
-  search.value = 'container';
-  search.dispatchEvent(new window.Event('input', { bubbles: true }));
-  check('命中 1 条', $$('.issue-row').length === 1);
-  search.value = 'zzz-none';
-  search.dispatchEvent(new window.Event('input', { bubbles: true }));
-  check('无命中显示空状态', !$('#issue-empty').classList.contains('hidden'));
-  search.value = '';
-  search.dispatchEvent(new window.Event('input', { bubbles: true }));
-  check('清空恢复 6 条', $$('.issue-row').length === 6);
+  net.routes['POST /api/lookup'] = {
+    body: {
+      status: 'success', query: 'accent-color', found: true, kind: 'css',
+      bcd_path: 'css.properties.accent-color', description: '',
+      verdicts: [
+        { browser: 'chrome', version: '90', label: 'chrome 90', supported: false, partial: false, confidence: 'certain', requirement: '93' },
+        { browser: 'safari', version: '14.1', label: 'safari 14.1', supported: true, partial: false, confidence: 'certain', requirement: '15.4' },
+      ],
+      unsupported_browsers: ['chrome 90'],
+      summary: 'MDN BCD: requires Chrome 93 (css.properties.accent-color)',
+      alternatives: [],
+    },
+  };
+  search.value = 'accent-color';
+  search.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(150);
+  check('查询面板展开', !$('#lookup-panel').classList.contains('hidden'));
+  check('显示命中的 BCD 路径', $('#lookup-title').textContent.includes('css.properties.accent-color'));
+  check('逐目标给出结论', $$('#lookup-body .pill').length === 2,
+    String($$('#lookup-body .pill').length));
+  check('不支持目标标 ✗', $('#lookup-body').textContent.includes('✗ chrome 90'));
+
+  net.routes['POST /api/lookup'] = {
+    body: { status: 'success', query: 'accent-colour', found: false,
+            alternatives: ['css.properties.accent-color'], summary: 'BCD 中查不到' },
+  };
+  search.value = 'accent-colour';
+  search.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(150);
+  check('未命中给出相近路径', $('#lookup-body').textContent.includes('accent-color'));
+  $('#lookup-body [data-alt]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+  const lastLookup = JSON.parse(net.calls.filter((c) => c.url.includes('/api/lookup')).pop().body);
+  check('点击相近路径会去掉 BCD 前缀再查', lastLookup.feature === 'accent-color', lastLookup.feature);
+
+  $('#lookup-close').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  check('关闭查询面板', $('#lookup-panel').classList.contains('hidden'));
 
   console.log('\n[6] 失败路径');
   net.routes['POST /api/detect'] = {
@@ -322,6 +366,30 @@ function buildPage(html) {
   await sleep(60);
   check('无目标 → banner 提示', $('#banner').textContent.includes('至少需要一个目标浏览器'));
   check('无目标 → 未发请求', net.calls.length === callsBefore);
+
+  console.log('\n[9] 导航路由与设置页');
+  check('初始在 Dashboard',
+    !$('[data-page="dashboard"]').classList.contains('hidden')
+    && $('[data-page="analysis"]').classList.contains('hidden'));
+  window.location.hash = '#/dashboard';
+  window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+  $('#goto-analysis-card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+  check('渐变卡按钮直接跳到分析页', !$('[data-page="analysis"]').classList.contains('hidden'));
+  check('页面标题同步', $('#page-title').textContent.includes('代码分析'), $('#page-title').textContent);
+  check('导航激活态跟随', $('a[data-route="analysis"]').getAttribute('aria-current') === 'page');
+
+  window.location.hash = '#/settings';
+  window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+  check('切到 Settings', !$('[data-page="settings"]').classList.contains('hidden'));
+  check('设置页展示模型名', $('#settings-body').textContent.includes('test-model'));
+  check('设置页展示 BCD 版本', $('#settings-body').textContent.includes('5.6.11'));
+  check('设置页展示 key 状态', $('#settings-body').textContent.includes('已配置'));
+  check('设置页列出浏览器候选', $('#settings-releases').textContent.includes('chrome'));
+
+  window.location.hash = '#/dashboard';
+  window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+  check('切回 Dashboard', !$('[data-page="dashboard"]').classList.contains('hidden'));
 
   console.log(`\n结果：${failures.length === 0 ? '全部通过' : `${failures.length} 项失败`}`);
   failures.forEach((item) => console.log(`  - ${item}`));

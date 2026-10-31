@@ -75,6 +75,16 @@ def detect(payload: DetectRequest, index: BcdIndex | None = None) -> DetectRespo
     issues.sort(key=lambda issue: (issue.type, issue.line, issue.column, issue.bcd_path, issue.feature))
     truncated = len(issues) > settings.max_issues
     if truncated:
+        # 截断必须显性告知：否则用户会以为"就这 500 条"，而真相是"被截掉了"
+        warnings.append(
+            ParseWarning(
+                kind=issues[0].type,
+                message=(
+                    f"问题数超过上限（{settings.max_issues} 条），结果已截断；"
+                    "请缩小代码范围或减少目标浏览器后重新检测"
+                ),
+            )
+        )
         issues = issues[: settings.max_issues]
     issues = [
         issue.model_copy(update={"id": f"issue_{position}"})
