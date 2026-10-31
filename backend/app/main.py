@@ -12,12 +12,14 @@
 from __future__ import annotations
 
 import logging
+import shutil
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api import detect as detect_api
+from app.api import lookup as lookup_api
 from app.api import explain as explain_api
 from app.api import verify as verify_api
 from app.core.config import PROJECT_ROOT, get_settings
@@ -34,7 +36,7 @@ logger = logging.getLogger("compat")
 
 app = FastAPI(
     title="AI 浏览器兼容性助手",
-    version="0.3.0",
+    version="0.5.0",
     description="L1 确定性静态检测 / L2 LLM 解释与修复 / L3 轻量验证",
 )
 
@@ -74,6 +76,7 @@ async def no_cache_for_app_shell(request, call_next):
 # 注意顺序：先注册 /api 路由，再挂静态目录 —— 挂载点 "/" 会兜底剩余路径，
 # 但 Starlette 按注册顺序匹配，所以 /api/* 不会被静态目录吞掉。
 app.include_router(detect_api.router)
+app.include_router(lookup_api.router)
 app.include_router(explain_api.router)
 app.include_router(verify_api.router)
 
@@ -92,7 +95,29 @@ def meta() -> dict[str, object]:
         "max_source_chars": settings.max_source_chars,
         "bcd_index_ready": settings.bcd_index_path.is_file(),
         "bcd_version": None,
+        "bcd_feature_count": None,
         "releases": {},
+        # Settings 页展示用：只暴露"有没有配置"，绝不回传密钥本体
+        "llm": {
+            "model": settings.openai_model,
+            "base_url": settings.openai_base_url,
+            "base_url_configured": bool(settings.openai_base_url),
+            "key_configured": bool(settings.openai_api_key),
+            "timeout_seconds": settings.llm_timeout_seconds,
+            "max_retries": settings.llm_max_retries,
+            "max_output_tokens": settings.llm_max_output_tokens,
+            "context_lines": settings.llm_context_lines,
+        },
+        "l3": {
+            "jsdom_timeout_seconds": settings.jsdom_timeout_seconds,
+            "node_available": shutil.which(settings.node_binary) is not None,
+            "runner_available": settings.jsdom_runner_path.is_file(),
+        },
+        "features": {
+            "max_source_chars": settings.max_source_chars,
+            "max_issues": settings.max_issues,
+            "max_version_segments": 4,
+        },
     }
 
     try:
@@ -102,6 +127,7 @@ def meta() -> dict[str, object]:
         return payload
 
     payload["bcd_version"] = index.bcd_version
+    payload["bcd_feature_count"] = len(index.features)
     payload["releases"] = {
         browser: index.releases(browser)
         for browser in (*CORE_BROWSERS, "safari_ios", "opera")

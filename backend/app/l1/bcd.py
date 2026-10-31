@@ -171,6 +171,8 @@ class BcdIndex:
         }
         # 惰性计算：JS 解析器需要"哪些根名在 BCD 里存在"来过滤局部变量
         self._js_roots: frozenset[str] | None = None
+        # 惰性计算：特性查询的拼写纠正需要"所有叶子名"
+        self._leaf_names: tuple[str, ...] | None = None
 
     # ---- 元信息 ----
 
@@ -217,6 +219,12 @@ class BcdIndex:
                         roots.add(parts[1])
             self._js_roots = frozenset(roots)
         return self._js_roots
+
+    def leaf_names(self) -> tuple[str, ...]:
+        """所有路径的末段名（``accent-color`` / ``at`` / ``dialog``），用于拼写纠正。"""
+        if self._leaf_names is None:
+            self._leaf_names = tuple(sorted({path.rsplit(".", 1)[-1] for path in self.features}))
+        return self._leaf_names
 
     def has_context_subfeatures(self, base_path: str) -> bool:
         """该属性是否存在 ``.flex_context`` 之类的上下文子特性。

@@ -356,6 +356,73 @@ class VerifyResponse(StrictModel):
 
 
 # --------------------------------------------------------------------------- #
+# 特性查询（L1 的"查表"能力，独立于检测）
+# --------------------------------------------------------------------------- #
+
+LookupKind = Literal["auto", "css", "js", "html"]
+
+
+class LookupRequest(StrictModel):
+    """``POST /api/lookup`` 请求体。
+
+    把"某属性/某 API 在你的目标浏览器里支不支持"变成一次确定性查表。
+    不走 LLM，答案直接来自本地 BCD 索引。
+    """
+
+    feature: str = Field(
+        min_length=1,
+        max_length=120,
+        description="特性名：CSS 属性（gap）、JS API（Array.at / fetch）、HTML 标签或属性（dialog / img.loading）",
+        examples=["accent-color"],
+    )
+    targets: list[str] = Field(min_length=1, max_length=MAX_TARGETS)
+    kind: LookupKind = Field(default="auto", description="auto 时按 css → js → html 的顺序尝试")
+
+    @field_validator("feature")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("feature 不能为空白")
+        return stripped
+
+    @field_validator("targets")
+    @classmethod
+    def _validate_targets(cls, value: list[str]) -> list[str]:
+        return _check_targets(value)
+
+    def parsed_targets(self) -> list[Target]:
+        return parse_targets(self.targets)
+
+
+class LookupVerdict(StrictModel):
+    """单个目标浏览器的判定。"""
+
+    browser: str
+    version: str
+    label: str
+    supported: bool
+    partial: bool = False
+    confidence: Confidence = "certain"
+    requirement: str | None = Field(default=None, description="BCD 记录的最低版本")
+
+
+class LookupResponse(StrictModel):
+    status: Status = "success"
+    query: str
+    found: bool = False
+    kind: IssueKind | None = None
+    bcd_path: str | None = None
+    description: str | None = None
+    verdicts: list[LookupVerdict] = Field(default_factory=list)
+    unsupported_browsers: list[str] = Field(default_factory=list)
+    summary: str | None = Field(default=None, description="人可读依据，模板生成")
+    alternatives: list[str] = Field(
+        default_factory=list, description="未命中时给出的相近 BCD 路径（最多 5 条）"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # 错误载体（我们自己抛的错，非 FastAPI 默认 422）
 # --------------------------------------------------------------------------- #
 

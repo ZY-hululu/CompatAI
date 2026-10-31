@@ -134,6 +134,12 @@ document.body.appendChild(note);
       state.browsers = meta.browsers?.length ? meta.browsers : BROWSER_FALLBACK;
       state.releases = meta.releases || {};
       state.targets = (meta.default_targets || []).map(parseTarget);
+      if (meta.bcd_version) {
+        const count = meta.bcd_feature_count
+          ? ` · ${Number(meta.bcd_feature_count).toLocaleString('en-US')} 条特性`
+          : '';
+        $('engine-note').textContent = `BCD ${meta.bcd_version}${count}`;
+      }
     } catch (error) {
       // 元信息拿不到时不要让页面变空白：用内置默认值，并提示后端未连接
       state.targets = ['chrome 90', 'safari 14.1', 'firefox 88', 'edge 90'].map(parseTarget);
@@ -304,31 +310,20 @@ document.body.appendChild(note);
   }
 
   function renderIssues() {
-    const query = state.query.trim().toLowerCase();
-    const rows = state.issues.filter((issue) => {
-      if (!query) return true;
-      return [
-        issue.feature,
-        issue.bcd_path,
-        issue.source_data,
-        ...(issue.unsupported_browsers || []),
-      ].join(' ').toLowerCase().includes(query);
-    });
-
-    $('issue-count').textContent = String(rows.length);
-    $('issue-list').innerHTML = rows.map(issueRow).join('');
+    $('issue-count').textContent = String(state.issues.length);
+    $('issue-list').innerHTML = state.issues.map(issueRow).join('');
 
     const empty = $('issue-empty');
-    empty.classList.toggle('hidden', rows.length > 0);
-    if (rows.length === 0) {
-      empty.querySelector('p').textContent = state.issues.length === 0
+    empty.classList.toggle('hidden', state.issues.length > 0);
+    if (state.issues.length === 0) {
+      empty.querySelector('p').textContent = state.lastDetect
         ? '没有发现兼容性问题'
-        : '没有匹配的问题';
+        : '还没有检测结果，点上方"开始检测"';
     }
 
-    $('list-status').textContent = query
-      ? `筛选「${state.query.trim()}」· 命中 ${rows.length} 条`
-      : `共 ${state.issues.length} 条 · 按严重程度排序 · 来自 L1 确定性检测`;
+    $('list-status').textContent = state.lastDetect
+      ? `共 ${state.issues.length} 条 · 按严重程度排序 · 来自 L1 确定性检测`
+      : '尚未检测';
   }
 
   function renderUnknown() {
@@ -525,6 +520,7 @@ document.body.appendChild(note);
 
     const severity = renderStats(body);
     renderIssues();
+    renderTop();
     renderUnknown();
     renderCharts(severity);
     renderBannerFromResult(body);
@@ -578,6 +574,157 @@ document.body.appendChild(note);
     const hint = $('code-hint');
     hint.textContent = '契约示例在默认目标集下为 0 条问题：Safari 14.1 恰好是 Flex gap 的支持起点（BCD: 14.1）。把 safari 改成 14.0 再检测，可复现 1 条 medium。';
     hint.classList.remove('hidden');
+  }
+
+  /* ------------------------------ 页面路由 ------------------------------ */
+
+  const PAGES = {
+    dashboard: { eyebrow: 'Dashboard', title: '浏览器兼容性检测' },
+    analysis: { eyebrow: 'Code Analysis', title: '代码分析与修复' },
+    settings: { eyebrow: 'Settings', title: '设置' },
+  };
+
+  function currentRoute() {
+    return (window.location.hash || '').replace(/^#\/?/, '') || 'dashboard';
+  }
+
+  function route(name) {
+    const target = PAGES[name] ? name : 'dashboard';
+    document.querySelectorAll('[data-page]').forEach((section) => {
+      section.classList.toggle('hidden', section.dataset.page !== target);
+    });
+    document.querySelectorAll('a[data-route]').forEach((link) => {
+      const active = link.dataset.route === target;
+      link.setAttribute('aria-current', active ? 'page' : 'false');
+      const dot = link.querySelector('.nav-dot');
+      if (dot) dot.classList.toggle('opacity-0', !active);
+    });
+    $('page-eyebrow').textContent = PAGES[target].eyebrow;
+    $('page-title').textContent = PAGES[target].title;
+    if (currentRoute() !== target) {
+      window.history.replaceState(null, '', `#/${target}`);
+    }
+  }
+
+  /* ------------------------------ 特性查询（本地 BCD） ------------------------------ */
+
+  let lookupTimer = null;
+
+  function hideLookup() {
+    $('lookup-panel').classList.add('hidden');
+    $('lookup-body').innerHTML = '';
+    $('lookup-title').textContent = '';
+  }
+
+  const BCD_PREFIXES = /^(css\.properties|html\.elements|html\.global_attributes|javascript\.builtins|api)\./;
+
+  function renderLookup(body) {
+    $('lookup-panel').classList.remove('hidden');
+    $('lookup-title').textContent = body.found
+      ? `${body.query} → ${body.bcd_path}`
+      : `${body.query} → BCD 中未找到`;
+
+    if (!body.found) {
+      const alternatives = body.alternatives || [];
+      $('lookup-body').innerHTML = `<p class="text-muted">${esc(body.summary || '')}</p>`
+        + (alternatives.length
+          ? '<p class="mt-2 text-[12px] text-muted">相近路径（点击再查）：</p>'
+            + '<div class="mt-1 flex flex-wrap gap-2">'
+            + alternatives.map((item) => `<button data-alt="${esc(item)}" class="pill pill-muted font-mono">${esc(item)}</button>`).join('')
+            + '</div>'
+          : '');
+      return;
+    }
+
+    const pills = (body.verdicts || []).map((verdict) => {
+      const tone = !verdict.supported ? 'pill-high' : verdict.partial ? 'pill-medium' : 'pill-low';
+      const mark = !verdict.supported ? '✗' : verdict.partial ? '~' : '✓';
+      return `<span class="pill ${tone}">${mark} ${esc(verdict.label)}</span>`;
+    }).join('');
+
+    $('lookup-body').innerHTML = ''
+      + `<div class="flex flex-wrap items-center gap-2">${pills}</div>`
+      + `<p class="mt-2 font-mono text-[11px] text-muted">${esc(body.summary || '')}</p>`
+      + (body.description ? `<p class="mt-1 text-[12px] text-muted">B C D 描述：${esc(body.description)}</p>` : '');
+  }
+
+  async function runLookup(raw) {
+    const query = String(raw || '').trim();
+    if (!query) {
+      hideLookup();
+      return;
+    }
+    try {
+      const body = await request('/api/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feature: query, targets: collectPayload().targets }),
+      });
+      renderLookup(body);
+    } catch (error) {
+      $('lookup-panel').classList.remove('hidden');
+      $('lookup-title').textContent = `${query} → 查询失败`;
+      $('lookup-body').innerHTML = `<p class="text-muted">${esc(error.message)}</p>`;
+    }
+  }
+
+  /* ------------------------------ 首页最近问题 ------------------------------ */
+
+  function renderTop() {
+    $('top-count').textContent = String(state.issues.length);
+    const top = state.issues.slice(0, 5);
+    if (!top.length) {
+      $('top-list').innerHTML = '<p class="text-[12px] text-muted">暂无问题。去 Code Analysis 页检测一次。</p>';
+      return;
+    }
+    $('top-list').innerHTML = top.map((issue) => `
+      <div class="top-row flex items-center gap-3 py-2 first:pt-0">
+        <div class="grid h-7 w-7 flex-none place-items-center rounded-[8px] text-[10px] font-bold"
+             style="background:var(--accent-soft);color:var(--ink)">${esc(TYPE_GLYPH[issue.type] || issue.type)}</div>
+        <span class="min-w-0 flex-1 truncate text-[13px]">${esc(issue.feature)}</span>
+        <span class="font-mono text-[11px] text-muted">L${issue.line}</span>
+        <span class="pill pill-${issue.severity}">${esc(issue.severity)}</span>
+      </div>`).join('');
+  }
+
+  /* ------------------------------ 设置页 ------------------------------ */
+
+  function renderSettings() {
+    const meta = state.meta;
+    const body = $('settings-body');
+    if (!meta) {
+      body.innerHTML = '<p class="text-[12px] text-muted">尚未加载 /api/meta</p>';
+      return;
+    }
+    const llm = meta.llm || {};
+    const l3 = meta.l3 || {};
+    const rows = [
+      ['BCD 版本', meta.bcd_version || '未就绪'],
+      ['索引就绪', meta.bcd_index_ready ? '是' : '否'],
+      ['默认目标集', (meta.default_targets || []).join(' / ')],
+      ['LLM 模型', llm.model || '—'],
+      ['LLM 端点', llm.base_url || '官方默认'],
+      ['API Key', llm.key_configured ? '已配置' : '未配置（L2 走模板兜底）'],
+      ['L2 超时 / 重试', `${llm.timeout_seconds ?? '—'}s / ${llm.max_retries ?? '—'} 次`],
+      ['L2 上下文行数', String(llm.context_lines ?? '—')],
+      ['jsdom 超时', `${l3.jsdom_timeout_seconds ?? '—'}s`],
+      ['jsdom 可用', l3.node_available && l3.runner_available ? '是' : '否'],
+      ['单请求字符上限', String(meta.max_source_chars ?? '—')],
+      ['目标数上限', String(meta.max_targets ?? '—')],
+    ];
+    body.innerHTML = rows.map(([label, value]) => `
+      <div class="rounded-inner bg-black/[0.02] px-3 py-2">
+        <p class="text-[11px] text-muted">${esc(label)}</p>
+        <p class="mt-0.5 truncate font-mono text-[12px]">${esc(value)}</p>
+      </div>`).join('');
+
+    const releases = meta.releases || {};
+    $('settings-releases').innerHTML = Object.entries(releases)
+      .map(([browser, versions]) => `
+        <span class="rounded-inner bg-black/[0.03] px-2 py-1 font-mono text-[11px]">
+          ${esc(browser)}：${versions.length} 个${versions.length ? `（最新 ${esc(versions[0])}）` : ''}
+        </span>`)
+      .join('') || '<p class="text-muted">未加载</p>';
   }
 
   /* ---------------------------- 修复与验证（L2 + L3） ---------------------------- */
@@ -889,9 +1036,10 @@ document.body.appendChild(note);
     }
 
     const button = $('fix-all');
-    const original = button.innerHTML;
+    const label = $('fix-all-label');
+    const originalLabel = label.textContent;
     button.disabled = true;
-    button.textContent = '修复中…';
+    label.textContent = '修复中…';
     try {
       const body = await request('/api/explain-fix', {
         method: 'POST',
@@ -933,7 +1081,7 @@ document.body.appendChild(note);
       }
     } finally {
       button.disabled = false;
-      button.innerHTML = original;
+      label.textContent = originalLabel;
     }
   }
 
@@ -989,9 +1137,46 @@ document.body.appendChild(note);
     }
   });
 
+  $('search').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      clearTimeout(lookupTimer);
+      runLookup(event.target.value);
+    } else if (event.key === 'Escape') {
+      event.target.value = '';
+      hideLookup();
+    }
+  });
+
   $('search').addEventListener('input', (event) => {
-    state.query = event.target.value;
-    renderIssues();
+    const value = event.target.value;
+    clearTimeout(lookupTimer);
+    if (!value.trim()) {
+      hideLookup();
+      return;
+    }
+    lookupTimer = setTimeout(() => runLookup(value), 400);
+  });
+
+  $('lookup-close').addEventListener('click', () => {
+    $('search').value = '';
+    hideLookup();
+  });
+
+  $('lookup-body').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-alt]');
+    if (!button) return;
+    const stripped = button.dataset.alt.replace(BCD_PREFIXES, '');
+    $('search').value = stripped;
+    runLookup(stripped);
+  });
+
+  $('goto-analysis').addEventListener('click', () => {
+    window.location.hash = '#/analysis';
+  });
+
+  $('goto-analysis-card').addEventListener('click', () => {
+    window.location.hash = '#/analysis';
   });
 
   document.querySelectorAll('.tab').forEach((button) => {
@@ -1010,12 +1195,17 @@ document.body.appendChild(note);
   /* -------------------------------- 启动 -------------------------------- */
 
   (async function bootstrap() {
+    route(currentRoute());
+    window.addEventListener('hashchange', () => route(currentRoute()));
+
     // 先把示例代码灌进 textarea，再走 setTab —— setTab 会把当前 textarea 内容"存回" state，
     // 若顺序反了，空 textarea 会覆盖掉 SAMPLE.css，首次自动检测就会发空请求（422）。
     $('code').value = state.code[state.tab];
     setTab(state.tab);
     initCharts();
+    renderTop();
     await loadMeta();
+    renderSettings();
     await runDetect();   // 首次加载自动检测一次，页面不会是空的
   })();
 })();

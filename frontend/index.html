@@ -61,9 +61,9 @@
         </div>
       </div>
 
-      <!-- 导航：激活项左侧蓝紫指示圆点 -->
+      <!-- 导航：hash 路由（#/dashboard | #/analysis | #/settings） -->
       <nav class="mt-8 space-y-1" aria-label="主导航">
-        <a href="#" class="nav-item" aria-current="page">
+        <a href="#/dashboard" data-route="dashboard" class="nav-item" aria-current="page">
           <span class="nav-dot"></span>
           <svg class="h-[18px] w-[18px] flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" />
@@ -71,7 +71,7 @@
           </svg>
           <span>Dashboard</span>
         </a>
-        <a href="#" class="nav-item">
+        <a href="#/analysis" data-route="analysis" class="nav-item">
           <span class="nav-dot opacity-0"></span>
           <svg class="h-[18px] w-[18px] flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M9 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
@@ -79,7 +79,7 @@
           </svg>
           <span>Code Analysis</span>
         </a>
-        <a href="#" class="nav-item">
+        <a href="#/settings" data-route="settings" class="nav-item">
           <span class="nav-dot opacity-0"></span>
           <svg class="h-[18px] w-[18px] flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <circle cx="12" cy="12" r="3" />
@@ -95,7 +95,7 @@
       <p class="flex items-center gap-2 text-[12px] text-white/85">
         <span class="h-1.5 w-1.5 flex-none rounded-full bg-safe"></span>L1 检测引擎就绪
       </p>
-      <p class="mt-1.5 text-[11px] leading-relaxed text-white/40">BCD 5.6.11 · 13,163 条特性</p>
+      <p id="engine-note" class="mt-1.5 text-[11px] leading-relaxed text-white/40">BCD 索引</p>
       <p class="mt-0.5 text-[11px] leading-relaxed text-white/40">本地索引 · 零网络 · 可复现</p>
     </div>
   </aside>
@@ -104,38 +104,42 @@
   <main class="min-w-0 flex-1">
     <div class="mx-auto w-full max-w-[1180px] px-6 py-8 lg:px-10 lg:py-9">
 
-      <!-- 顶部：标题 + 胶囊搜索框 -->
+      <div id="banner" class="hidden"></div>
+
+      <!-- 顶部：页面标题 + 特性查询框（输入即查本地 BCD） -->
       <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Dashboard</p>
-          <h1 class="mt-1.5 text-[30px] font-semibold leading-tight tracking-tight">浏览器兼容性检测</h1>
+          <p id="page-eyebrow" class="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Dashboard</p>
+          <h1 id="page-title" class="mt-1.5 text-[30px] font-semibold leading-tight tracking-tight">浏览器兼容性检测</h1>
           <p class="mt-1.5 text-[13px] text-muted">确定性检测 · 模型只解释，不判定兼容性</p>
         </div>
 
-        <label class="search flex w-full items-center gap-2 px-4 py-2.5 sm:w-[300px]">
+        <label class="search flex w-full items-center gap-2 px-4 py-2.5 sm:w-[360px]">
           <svg class="h-4 w-4 flex-none text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" stroke-linecap="round" />
           </svg>
-          <input id="search" type="search" placeholder="搜索特性 / BCD 路径…"
+          <input id="search" type="search" placeholder="查特性是否支持：accent-color / Array.at / dialog"
                  class="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-muted" />
+          <kbd class="hidden rounded bg-black/5 px-1.5 py-0.5 text-[10px] text-muted sm:block">Enter</kbd>
         </label>
       </header>
 
-      <!-- 警告/错误 banner：内容由 app.js 的 renderBanner 渲染（浅黄，不新增色值） -->
-      <div id="banner" class="hidden"></div>
-
-      <!-- 目标浏览器：Chips，可增删改 -->
-      <section class="card mt-5 px-6 py-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <h2 class="text-[14px] font-semibold">目标浏览器</h2>
-            <span class="pill pill-muted">可增删改</span>
+      <!-- 特性查询结果（本地 BCD 查表，不经过模型） -->
+      <section id="lookup-panel" class="card mt-5 hidden px-6 py-5">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-[11px] uppercase tracking-[0.16em] text-muted">特性查询 · 本地 BCD</p>
+            <p id="lookup-title" class="mt-1 truncate font-mono text-[13px]"></p>
           </div>
-          <p class="text-[12px] text-muted">任意合法版本号，如 12.1 / 15.0.2（1–4 段数字）</p>
+          <button id="lookup-close" class="text-muted transition hover:text-ink" aria-label="关闭查询结果">✕</button>
         </div>
-        <div id="target-chips" class="mt-4 flex flex-wrap items-center gap-2"></div>
+        <div id="lookup-body" class="mt-3 text-[13px]"></div>
       </section>
 
+      <div id="banner" class="hidden"></div>
+
+      <!-- ========== 页面：Dashboard ========== -->
+      <section data-page="dashboard" class="space-y-5 pt-6">
       <!-- 三张核心卡片 -->
       <section class="mt-5 grid gap-5 sm:grid-cols-3">
         <article class="card-safe px-6 py-5">
@@ -153,14 +157,62 @@
         <article class="card-accent px-6 py-5 text-white">
           <p class="text-[12px] font-medium text-white/75">系统状态</p>
           <p class="mt-3.5 text-[22px] font-semibold leading-none">L1 就绪</p>
-          <button id="fix-all"
+          <button id="goto-analysis-card"
                   class="mt-4 inline-flex items-center gap-1.5 rounded-btn bg-white px-4 py-2 text-[13px] font-semibold text-ink transition hover:bg-white/90">
-            一键修复全部
+            去分析与修复
             <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </button>
         </article>
+      </section>
+
+      <!-- 图表区 7:5 -->
+      <section class="mt-5 grid gap-5 lg:grid-cols-12">
+        <article class="card p-6 lg:col-span-7">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-[14px] font-semibold">各浏览器受影响问题数</h2>
+            <span class="pill pill-muted">按 unsupported_browsers 统计</span>
+          </div>
+          <div id="chart-bar" class="mt-4 h-[260px] w-full"></div>
+        </article>
+
+        <article class="card p-6 lg:col-span-5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-[14px] font-semibold">问题严重等级比例</h2>
+            <span class="pill pill-muted">确定性矩阵</span>
+          </div>
+          <div id="chart-donut" class="mt-1 h-[226px] w-full"></div>
+          <div id="donut-legend" class="mt-1 flex items-center justify-center gap-5 text-[12px] text-muted"></div>
+        </article>
+      </section>
+
+      <!-- 最近问题（Top 5）：详情在 Code Analysis 页 -->
+      <section class="card mt-5 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+          <div class="flex items-center gap-2">
+            <h2 class="text-[14px] font-semibold">最近问题</h2>
+            <span id="top-count" class="pill pill-muted">0</span>
+          </div>
+          <button id="goto-analysis" class="btn-ghost px-3 py-1.5 text-[12px]">查看全部 →</button>
+        </div>
+        <div id="top-list" class="px-6 pb-5"></div>
+      </section>
+
+      </section>
+
+      <!-- ========== 页面：Code Analysis ========== -->
+      <section data-page="analysis" class="hidden space-y-5 pt-6">
+      <!-- 目标浏览器：Chips，可增删改 -->
+      <section class="card mt-5 px-6 py-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-[14px] font-semibold">目标浏览器</h2>
+            <span class="pill pill-muted">可增删改</span>
+          </div>
+          <p class="text-[12px] text-muted">任意合法版本号，如 12.1 / 15.0.2（1–4 段数字）</p>
+        </div>
+        <div id="target-chips" class="mt-4 flex flex-wrap items-center gap-2"></div>
       </section>
 
       <!-- 代码输入 -->
@@ -186,58 +238,20 @@
           <p class="text-[12px] text-muted">
             <code class="font-mono">Ctrl/⌘ + Enter</code> 快速检测 · 数据来自 <code class="font-mono">POST /api/detect</code>
           </p>
-          <button id="detect" class="btn-accent inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold">
-            <span id="detect-spinner" class="hidden h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
-            <span id="detect-label">开始检测</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- 图表区 7:5 -->
-      <section class="mt-5 grid gap-5 lg:grid-cols-12">
-        <article class="card p-6 lg:col-span-7">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="text-[14px] font-semibold">各浏览器受影响问题数</h2>
-            <span class="pill pill-muted">按 unsupported_browsers 统计</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="detect" class="btn-accent inline-flex items-center gap-2 px-6 py-3 text-[14px] font-semibold">
+              <span id="detect-spinner" class="hidden h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+              <span id="detect-label">开始检测</span>
+            </button>
+            <button id="fix-all"
+                    class="inline-flex items-center gap-2 rounded-btn border border-black/10 bg-white px-5 py-3 text-[14px] font-semibold text-ink transition hover:border-black/20 disabled:cursor-not-allowed disabled:opacity-60">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9L18 15z" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <span id="fix-all-label">一键修复</span>
+            </button>
           </div>
-          <div id="chart-bar" class="mt-4 h-[260px] w-full"></div>
-        </article>
-
-        <article class="card p-6 lg:col-span-5">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="text-[14px] font-semibold">问题严重等级比例</h2>
-            <span class="pill pill-muted">确定性矩阵</span>
-          </div>
-          <div id="chart-donut" class="mt-1 h-[226px] w-full"></div>
-          <div id="donut-legend" class="mt-1 flex items-center justify-center gap-5 text-[12px] text-muted"></div>
-        </article>
-      </section>
-
-      <!-- 底部列表 -->
-      <section class="card mt-5 overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
-          <div class="flex items-center gap-2">
-            <h2 class="text-[14px] font-semibold">问题列表</h2>
-            <span id="issue-count" class="pill pill-muted">0</span>
-          </div>
-          <p id="list-status" class="text-[12px] text-muted" aria-live="polite">按严重程度排序 · 来自 L1 确定性检测</p>
-        </div>
-
-        <!-- 骨架屏 -->
-        <div id="issue-skeleton" class="hidden space-y-3 px-6 pb-6">
-          <div class="skeleton h-16 w-full"></div>
-          <div class="skeleton h-16 w-full"></div>
-          <div class="skeleton h-16 w-full"></div>
-        </div>
-
-        <!-- 未识别特性（BCD 查不到）由 app.js 填充 -->
-        <p id="unknown-features" class="hidden border-t border-black/5 px-6 py-3 text-[12px] text-muted"></p>
-
-        <div id="issue-list" class="thin-scroll max-h-[520px] overflow-y-auto"></div>
-
-        <div id="issue-empty" class="hidden px-6 py-14 text-center">
-          <p class="text-[13px] text-muted">没有匹配的问题</p>
-          <p class="mt-1 text-[12px] text-muted/70">试试清空搜索框，或改用更老的目标版本</p>
         </div>
       </section>
 
@@ -272,6 +286,52 @@
 
         <div id="fix-issues" class="border-t border-black/5 px-6 py-4"></div>
       </section>
+
+      <!-- 底部列表 -->
+      <section class="card mt-5 overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+          <div class="flex items-center gap-2">
+            <h2 class="text-[14px] font-semibold">问题列表</h2>
+            <span id="issue-count" class="pill pill-muted">0</span>
+          </div>
+          <p id="list-status" class="text-[12px] text-muted" aria-live="polite">按严重程度排序 · 来自 L1 确定性检测</p>
+        </div>
+
+        <!-- 骨架屏 -->
+        <div id="issue-skeleton" class="hidden space-y-3 px-6 pb-6">
+          <div class="skeleton h-16 w-full"></div>
+          <div class="skeleton h-16 w-full"></div>
+          <div class="skeleton h-16 w-full"></div>
+        </div>
+
+        <!-- 未识别特性（BCD 查不到）由 app.js 填充 -->
+        <p id="unknown-features" class="hidden border-t border-black/5 px-6 py-3 text-[12px] text-muted"></p>
+
+        <div id="issue-list" class="thin-scroll max-h-[520px] overflow-y-auto"></div>
+
+        <div id="issue-empty" class="hidden px-6 py-14 text-center">
+          <p class="text-[13px] text-muted">没有匹配的问题</p>
+          <p class="mt-1 text-[12px] text-muted/70">试试清空搜索框，或改用更老的目标版本</p>
+        </div>
+      </section>
+
+
+      </section>
+
+      <!-- ========== 页面：Settings（只读） ========== -->
+      <section data-page="settings" class="mt-6 hidden space-y-5">
+        <article class="card px-6 py-5">
+          <h2 class="text-[14px] font-semibold">运行配置（只读）</h2>
+          <p class="mt-1 text-[12px] text-muted">来自 <code class="font-mono">GET /api/meta</code>。密钥不会回传，只显示是否已配置。</p>
+          <div id="settings-body" class="mt-4 grid gap-3 sm:grid-cols-2"></div>
+        </article>
+        <article class="card px-6 py-5">
+          <h2 class="text-[14px] font-semibold">目标浏览器版本候选</h2>
+          <p class="mt-1 text-[12px] text-muted">来自本地 BCD 索引，仅作输入提示；仍可填写任意合法版本号。</p>
+          <div id="settings-releases" class="mt-3 flex flex-wrap gap-2 text-[12px]"></div>
+        </article>
+      </section>
+
 
       <p class="mt-6 pb-2 text-center text-[11px] text-muted/80">
         第 3 步联调 · 数据来自本地 L1 接口 · 圆角/色值/阴影遵循 docs/00-plan.md §4.1 · 示例数据由本地 L1 真实检测生成

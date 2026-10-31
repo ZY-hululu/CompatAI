@@ -164,6 +164,16 @@ def test_stats_and_targets_resolved_are_filled() -> None:
     assert [t.label for t in response.targets_resolved] == ["chrome 90", "safari_ios 15.0"]
 
 
+def test_truncation_is_reported_explicitly() -> None:
+    """问题数超过上限被截断时，必须返回 partial + 明确警告，不能静默。"""
+    css = "\n".join(f".c{i} {{ accent-color: red; }}" for i in range(600))
+    response = detect(DetectRequest(css=css, targets=["safari 12"]))
+
+    assert response.status == "partial"
+    assert len(response.issues) == 500
+    assert any("已截断" in warning.message for warning in response.parse_warnings), response.parse_warnings
+
+
 def test_trailing_newline_does_not_add_a_line() -> None:
     """前端 textarea 提交的内容天然带尾随换行，行数不能因此 +1。"""
     with_newline = detect(DetectRequest(css=".a {\n  gap: 1px;\n}\n", targets=["chrome 90"]))

@@ -67,7 +67,17 @@ function buildPage(html) {
   const $$ = (selector) => Array.from(doc.querySelectorAll(selector));
   const click = (element) => element.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 
-  await sleep(1500); // 首次请求要加载 6MB 索引（进程内缓存后很快）
+  /** 轮询等待条件成立；比写死 sleep 稳，jsdom 每次启动就有 ~2.6s 抖动 */
+  async function waitFor(predicate, timeoutMs = 30000, interval = 200) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return true;
+      await sleep(interval);
+    }
+    return false;
+  }
+
+  await waitFor(() => doc.querySelectorAll('.issue-row').length > 0, 30000);
 
   console.log('\n[1] /api/meta → chips');
   const chipBrowser = $$('.chip select').map((el) => el.value);
@@ -106,15 +116,27 @@ function buildPage(html) {
   check('方法名推断标注了上下文未知',
     $$('.issue-row').some((row) => row.textContent.includes('上下文未知')));
 
+  console.log('\n[2b] 顶部搜索 = 特性查询（真后端）');
+  const searchInput = $('#search');
+  searchInput.value = 'accent-color';
+  searchInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await waitFor(() => !$('#lookup-panel').classList.contains('hidden'), 20000);
+  check('查表返回 BCD 路径', $('#lookup-title').textContent.includes('css.properties.accent-color'),
+    $('#lookup-title').textContent);
+  check('按目标逐条给出结论', $$('#lookup-body .pill').length === 4,
+    String($$('#lookup-body .pill').length));
+  check('结论取自 BCD（含 requires）', $('#lookup-body').textContent.includes('requires Chrome 93'));
+
   console.log('\n[3] 再点一次检测（幂等）');
   const before = $$('.issue-row').length;
   $('#detect').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  await sleep(800);
+  await waitFor(() => !$('#detect').disabled, 30000);
   check('问题数不变', $$('.issue-row').length === before, `${before} → ${$$('.issue-row').length}`);
 
   console.log('\n[4] L3 验证（真后端 · 用示例修复，不依赖模型可用性）');
   click($('#use-sample-fix'));
-  await sleep(5000);   // 两次 jsdom 执行（含 node 启动）
+  await waitFor(() => !$('#fix-state').textContent.includes('待执行')
+    && !$('#fix-state').textContent.includes('待验证'), 40000);
   check('修复面板展开', !$('#fix-panel').classList.contains('hidden'));
   check('状态 = 全部解决', $('#fix-state').textContent.includes('全部解决'),
     $('#fix-state').textContent);
@@ -130,7 +152,7 @@ function buildPage(html) {
   safariInput.value = '14.0';
   safariInput.dispatchEvent(new window.Event('input', { bubbles: true }));
   $('#detect').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  await sleep(900);
+  await waitFor(() => !$('#detect').disabled, 30000);
   const rows = $$('.issue-row').map((row) => row.textContent.replace(/\s+/g, ' '));
   check('出现 gap（flex_context）问题', rows.some((text) => /gap/.test(text) && /14\.1/.test(text)),
     `共 ${rows.length} 行`);

@@ -90,7 +90,21 @@ CompatAI 将系统拆成三层，每层只做一件事：
   2. Python 侧 `taskkill /F /T` 杀**进程树** + 有界等待，作为兜底。
 - 超时后返回 `dom_diff.ran=false` + `status="partial"` + 明确错误文案，**不会拖死请求线程**。
 
-### 2.4 100% 离线前端
+### 2.4 特性查询：直接问「这个能不能用」
+
+顶部搜索框不是全文搜索，而是**本地 BCD 查表**：输入 `accent-color` / `Array.at` / `dialog`，
+按当前目标集逐个给出 ✓ / ~ / ✗，依据来自与 L1 完全相同的索引与版本比较，**不经过模型**。
+
+支持 CSS 属性、JS API（`array.at` 大小写不敏感）、HTML 标签与属性（`img loading`、`inert`）；
+拼错时用 difflib 纠错（`accent-colour` → `accent-color`），查不到也不会给一个编造的答案。
+
+### 2.5 三页路由
+
+`#/dashboard`（统计、图表、最近问题）/ `#/analysis`（目标集、代码检测、问题列表、修复与验证）/
+`#/settings`（运行配置只读展示：模型、端点、超时、BCD 版本、jsdom 可用性）。
+密钥永远不回传，页面只显示「是否已配置」。
+
+### 2.6 100% 离线前端
 
 - 深色侧边栏 + 微拟物卡片式 Dashboard，设计 token 集中于 `assets/tokens.css`
   （背景 `#F4F4F0` / 侧栏 `#232323` / 卡圆角 24px / 阴影 `0 10px 30px rgba(0,0,0,.04)`）。
@@ -151,6 +165,7 @@ CompatAI 将系统拆成三层，每层只做一件事：
 |---|---|---|
 | `GET` | `/api/meta` | 默认目标集、浏览器版本候选、BCD 版本 |
 | `POST` | `/api/detect` | **L1**：返回 `issues[]` / `unknown_features[]` / `stats` |
+| `POST` | `/api/lookup` | **L1 查表**：直接问「某特性支不支持」，不走模型 |
 | `POST` | `/api/explain-fix` | **L2**：返回 `explanations[]`；永远 200，最差 `degraded=true` |
 | `POST` | `/api/verify` | **L3**：返回 `resolved` / `remaining` / `new_issues` / `dom_diff` |
 | `GET` | `/healthz` | 存活检查（不触碰索引） |
@@ -289,11 +304,11 @@ cd backend
 ### 4.6 冒烟验证
 
 ```powershell
-# 单元测试（133 项）
+# 单元测试（161 项）
 cd backend
 ..\.venv\Scripts\python -m pytest
 
-# 前端假后端测试（50 项断言）
+# 前端假后端测试（71 项断言）
 node ..\frontend\tests\ui-smoke.cjs
 
 # 真后端端到端（需先在 8010 端口起服务，或设置 API_URL）
@@ -341,17 +356,18 @@ curl.exe -s -X POST http://127.0.0.1:8000/api/detect `
 ## 6. 项目结构
 
 ```
-rag/
+CompatAI/
 ├─ backend/
 │  ├─ app/
 │  │  ├─ main.py                 # FastAPI 装配、静态托管
-│  │  ├─ api/{detect,explain,verify}.py
+│  │  ├─ api/{detect,lookup,explain,verify}.py
 │  │  ├─ core/{config,schemas}.py
 │  │  ├─ l1/                     # 确定性检测层
 │  │  │  ├─ bcd.py               # 索引加载、版本比较、上下文判定
 │  │  │  ├─ detector.py          # 编排：解析 → 查表 → 定级 → 稳定排序
 │  │  │  ├─ severity.py          # 严重度矩阵 + 证据文本模板
 │  │  │  ├─ targets.py           # 任意版本号解析与比较
+│  │  │  ├─ lookup.py            # 特性查询：属性/API/标签 → 支持情况
 │  │  │  └─ parsers/{css,js,html}_parser.py
 │  │  ├─ l2/                     # 解释与修复层
 │  │  │  ├─ prompts.py           # System Prompt / 口径 / JSON Schema
@@ -365,7 +381,7 @@ rag/
 │  ├─ data/bcd_index.json        # 生成的索引（运行期唯一数据源）
 │  ├─ scripts/build_bcd_index.py
 │  ├─ node/package.json          # BCD 数据包 + jsdom
-│  ├─ tests/                     # 133 项 pytest
+│  ├─ tests/                     # 161 项 pytest
 │  ├─ requirements.txt
 │  └─ pytest.ini
 ├─ frontend/
@@ -384,9 +400,9 @@ rag/
 
 | 套件 | 规模 | 覆盖重点 |
 |---|---|---|
-| `backend/tests` | **133 项** | 版本比较边界、上下文优先、JS 兜底、HTML 内嵌行号、L2 幻觉拦截、L3 超时 |
-| `frontend/tests/ui-smoke.cjs` | **50 项断言** | 初始化、渲染、四类错误、修复面板、Diff、标签切换（假后端） |
-| `frontend/tests/e2e-live.cjs` | **24 项断言** | 真实 uvicorn 下的检测 → 修复 → 验证闭环 |
+| `backend/tests` | **161 项** | 版本边界、上下文优先、JS 兜底、HTML 内嵌行号、L2 幻觉拦截、L3 超时、特性查询 |
+| `frontend/tests/ui-smoke.cjs` | **71 项断言** | 初始化、错误、修复面板、Diff、特性查询、路由、设置页（假后端） |
+| `frontend/tests/e2e-live.cjs` | **25 项断言** | 真实 uvicorn 下的检测 → 查表 → 修复 → 验证闭环 |
 
 关键实测结论（均可复现）：
 

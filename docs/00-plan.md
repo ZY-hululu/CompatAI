@@ -21,7 +21,7 @@
 ## 1. 目录结构（目标形态）
 
 ```
-rag/
+CompatAI/
 ├─ backend/
 │  ├─ app/
 │  │  ├─ main.py                 # FastAPI 实例、CORS、路由挂载、/healthz
@@ -799,3 +799,71 @@ raw_preview: {"explanations": [{"issue_id": "issue_1", ..., "fix_edits": [{...}]
 
 教训：前后端契约变更时，**前端产物必须可失效**，否则"代码是对的、界面是错的"这种故障
 最难排查——它看起来像模型没干活。
+
+---
+
+## 18. 页面拆分 + 特性查询（第 5 步）
+
+### 18.1 起因
+
+用户反馈两条：**"有些页面还没做"**、**"主页面搜索不能用"**。核实后确认：
+
+* 侧边栏 `Code Analysis` / `Settings` 是 `href="#"` 占位，点了只是跳回顶部；
+* 搜索框只在**已检测出的 issue 列表**内做子串过滤，搜不到源码与中文解释，
+  且无结果时的空状态文案会误导成"没有兼容性问题"。
+
+### 18.2 页面拆分
+
+采用 hash 路由（无构建、无依赖）：`#/dashboard` / `#/analysis` / `#/settings`。
+
+| 页面 | 内容 |
+|---|---|
+| Dashboard | 三张统计卡、柱状图/环形图、最近问题 Top 5、"查看全部 →" |
+| Code Analysis | 目标浏览器 Chips、代码检测（三语种）、问题列表、修复与验证面板 |
+| Settings | 运行配置只读：BCD 版本、默认目标集、模型/端点/Key 状态、L2 超时重试、jsdom 状态、上限 |
+
+`/api/meta` 相应扩展了 `llm` / `l3` / `features` 三组**只读**信息；
+**密钥永不回传**，页面只显示"是否已配置"。
+
+### 18.3 特性查询（替代原来的列表过滤）
+
+新增 `POST /api/lookup`，与 L1 共用同一份 BCD 与同一套版本比较，**不经过任何模型**：
+
+| 输入 | 解析结果 |
+|---|---|
+| `accent-color` | `css.properties.accent-color` |
+| `Array.at` / `array.at` | `javascript.builtins.Array.at` |
+| `img loading` / `img.loading` | `html.elements.img.loading` |
+| `inert` | 元素属性查不到 → 回落 `html.global_attributes.inert` |
+| `accent-colour`（拼错） | 未命中，给出 difflib 纠错后的候选路径 |
+
+前端：Enter 立即查询、输入 400ms 防抖、Esc 关闭；每个目标给 `✓ / ~ / ✗` 与 BCD 依据；
+未命中时把候选路径做成可点击的胶囊，点一下用去掉前缀的名字重查。
+
+### 18.4 压力测试与由此发现的问题
+
+| 输入 | 耗时 | 结果 |
+|---|---|---|
+| 500 行 CSS（13.6 KB） | 928 ms（含首次索引加载） | 500 行 / 500 声明 / 252 条问题 |
+| 2000 行 CSS（55.6 KB） | 152 ms | 2000 行 / **问题截断到 500 条** |
+| 228,000 字符 | 立即拒绝 | 超出 `max_source_chars=200000` 上限 |
+
+压力测试暴露一个诚实性缺口：**问题数被截断时没有任何提示**，用户会以为"就这 500 条"。
+已修复：截断时追加 `parse_warnings`（"结果已截断，请缩小范围"）并置 `status=partial`，
+前端会因此出现顶部黄色 banner。新增测试 `test_truncation_is_reported_explicitly` 钉住。
+
+### 18.5 测试
+
+| 套件 | 项数 | 结果 |
+|---|---|---|
+| `backend/tests`（新增 `test_lookup.py` 11 项 + 截断 1 项） | **162** | ✅ |
+| `frontend/tests/ui-smoke.cjs`（新增查表 6 项、路由/设置 10 项、Top5 2 项） | **71** | ✅ |
+| `frontend/tests/e2e-live.cjs`（新增真后端查表 3 项） | **25** | ✅ |
+
+e2e 同时把写死的 `sleep` 全部换成**轮询等待**——L3 验证实测需要 5.4 秒，原来固定等 5 秒会假失败。
+
+### 18.6 仍未做
+
+* 导出（JSON/CSV）与检测历史（前端本地存最近若干次）；
+* 窄屏（<1024px）真机验收、键盘 Tab 顺序验收；
+* 真实框架代码（Vue SFC / React JSX / 压缩 CSS）的兼容性表现。
